@@ -1,0 +1,201 @@
+IRSEC COMPETITION GENERAL NOTES
+
+Shutdown unnecessary services:
+•	netstat -anp | grep LISTEN | grep -v STREAM
+•	netstat -tunlp
+•	chkconfig serviceName off
+•	chmod 0700 /etc/rc*
+•	chmod 0700 /etc/init.d*
+
+Configure user sessions to time out automatically:
+•	typeset -r TMOUT=900 (15 minutes = 900 seconds)
+
+Analyzing DNS:
+•	vim /etc/resolv.conf (look for rogue entries)
+•	Analyze host files:
+◦	/etc/hosts
+◦	/etc/passwd
+◦	/etc/shadow
+
+Set permissions on sensitive system files:
+•	configuration files:
+◦	firewall:
+▪	chmod 0700:   
+•	/etc/profile
+•	/etc/hosts.allow
+•	/etc/mtab
+•	/etc/utmp
+•	/var/adm/wtmp
+•	/etc/syslog.pid
+◦	Kernel:
+▪	chmod 0700
+•	/etc/sysctl.conf
+•	/etc/inittab
+◦	chown root:root && chmod og-rwx
+▪	/etc/anacrontab
+▪	/etc/anacrontab
+▪	/etc/crontab
+▪	/etc/cron.hourly
+▪	/etc/cron.daily
+▪	/etc/cron.weekly
+▪	/etc/cron.monthly
+▪	/etc/cron.d
+▪	/etc/grub.conf
+◦	chmod 644 && chown root:root
+▪	/etc/fstab
+▪	/etc/passwd
+▪	/etc/group
+▪	/etc/shadow (400)
+▪	/etc/gshadow
+▪	/etc/sudoers
+
+Ensure log files (/var/log, /var/adm, or /var/tmp) are only writable by root
+
+Find any unexpected world writable files:
+•	find / -type d -perm +2 -ls
+•	chmod 750
+
+Process Management
+•	ps – display currently active processes
+•	top – display all running processes
+•	kill pid – kill process id pid
+•	kill -9 pid – force kill process id
+•	ps -dN | grep pts/3
+•	kill -9 <pid>
+
+System
+•	finger user – display information about user
+
+Fail2ban
+install fail2ban
+cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+mod file to:
+	[sshd]
+	enabled  = true
+	port     = ssh ( provide the port number if the default port is changed )
+	protocol = tcp
+	filter   = sshd
+	logpath  = /var/log/secure
+	maxretry = 3 ( max no. of tries after which the host should be banned)
+	findtime = 600 (This parameter sets the window that fail2ban will pay 	attention to when looking for repeated failed authentication attempts in 	seconds)
+	bantime  = 600 (time duration for which the host is banned -in seconds)
+service fail2ban restart
+
+Faillog
+unlock an account after login failures: faillog -r -u userName
+lock account: passwd -l userName
+unlock: passwd -u userName
+
+Ensure no non-root acccounts have UID set to 0:
+awk -F: ‘($3 == “0”) {print}’ /etc/passwd
+
+Scan for rootkits
+install chkrootkit // rkhunter
+sudo chkrootkit -x | less (-p /mnt/safe)
+rkhunter –check (--bindir)
+
+FTP
+Jailing FTP Users
+open /etc/vsftpd/vsftpd.conf and uncomment the following:
+	chroot_local_user=YES
+	chroot_list_enable=YES
+	chroot_list_file=/etc/vsftpd.chroot_list
+save the file and restart: systemctl restart vsftpd
+disable anonymous access
+remove ftp entry from the password file
+ensure ftp account is not in the NIS password file
+do not allow the root directory or entire disks to be shared
+allow only anonymous downloads if anonymous access is required:
+	cd ~ftp
+	find . \( -user ftp -a -type d \) -exec /bin/chown 0 {} \;
+	find . \( -perm -002 -a ! \( \( -type l \) -o \( -type c \) \) -exec  /bin/chmod o-w {} \; \)
+allowing anonymous uploads and restricting them to one directory:
+as root:
+# cd ~ftp
+# mkdir -p ./pub/incoming
+# chown 0 ./pub
+# chown 0 ./pub/incoming
+# chmod 755 ./pub
+# chmod 733 ./pub/incoming
+# /bin/chmod -R u-r ./pub/incoming
+# Keep anonymous ftp "dropbox" clean of improper (and illegal) items
+15,30,45,01 * * * * chmod  -R u-r  /home/ftp/pub/incoming 2>&1
+
+mySQL
+sudo vim /etc/mysql/my.cnf
+	bind-address = 127.0.0.1
+	** this will not accept communications from anywhere except the local machine. SSH to the database for queries and sending the results through SSH tunnel?
+
+	Local-infile=0
+	# this restricts access to the underlying filesystem from within mySQL.
+	Log=/var/log/mysql-logfile
+
+	sudo ls -l /var/log/mysql*
+	# make sure these files are not world readable
+
+	mysql -u root -p
+	SELECT User, host, password FROM mysql.user;
+	UPDATE mysql.user SET password=PASSWORD(‘newPassword’) WHERE user=”demo-user”;
+	UPDATE mysql.user SET Host=’localhost’ WHERE user=”demo-user”;
+	DELETE FROM mysql.user WHERE user=””;
+	FLUSH PRIVILEGES;
+
+	rename user ‘root’@’localhost’ to ‘newAdminUser’@’localhost’;
+	FLUSH PRIVILEGES;
+	
+Stopping unnecessary services
+	search for processes running and net connections:	
+		netstat -tap > listening.services
+		# less listening.services
+		ps ax
+		netstat -lp // netstat -npl
+		systemctl list-unit-files --type=service | grep enabled
+	search and kill for a process
+		ps ax | grep cupsd
+		kill -9 1511
+		systemctl diable service_name
+	use ps, find, grep, or locate to find more information about program and PID
+	check /etc/services for an unfamiliar service name or port number
+	turn off a service:
+		/etc/init.d/nfs stop
+		OR /etc/rc.d/init.d
+	enable and disable running services
+		chkconfig httpd off
+		chkconfig httpd –-del
+	on ubuntu:
+		update-rc.d -f apache2 remove
+
+General
+•	disable root over SSH
+◦	must create secondary user to use when you need to log in and administer the system
+◦	vim /etc/ssh/sshd_conf
+▪	#PermitRootLogin no
+▪	service ssh restart OR systemctl restart sshd
+▪	test whether you can successfully ssh into the server using the previously created user! Otherwise you may be totally logged out of the server
+▪	#Port 22 // choose another port number (perhaps 1977)
+▪	AllowUsers [username] maybe modify?
+◦	Chown root:root /etc/ssh/sshd_config
+◦	chmod 600 /etc/ssh/sshd_config
+•	add new user: adduser username
+◦	visudo
+◦	add the following line after root ALL=(ALL:ALL) ALL
+◦	username ALL=(ALL:ALL) ALL
+◦	on centOS: {username} ALL=(ALL)	ALL
+•	generate SSH keys (?)
+◦	ssh-keygen -b 4096 -t rsa (creates id_rsa and id_rsa.pub)
+◦	ssh-copy-id -i ~/.ssh/id_rsa.pub {username}@{remotepublicIPaddress}
+◦	connect to the remote server and run: cat .ssh/authorized_keys
+•	lock the boot directory:
+◦	vim /etc/fstab
+▪	add this line to the very end:
+▪	LABEL=/boot	   /boot     ext2     defaults,ro       1  2
+◦	require auth for single-user mode:
+▪	sed -i “/SINGLE/s/sushell/sulogin/” /etc/sysconfig/init
+▪	sed -i “/PROMPT/s/yes/no/” /etc/sysconfig/init
+	
+Networking
+•	disable IP forwarding: set net.ipv4.ip_forward to 0 in /etc/sysctl.conf
+•	disable send packet redirects: set net.ipv4.conf.all.send_redirects & net.ipv4.conf.default.send_redirects to 0 in /etc/sysctl.conf
+•	disable ICMP redirect acceptance: set net.ipv4.conf.all.accept_redirects && net.ipv4.conf.default.accept_redirects to 0 in /etc/sysctl.conf
+•	enable bad error message protection: set net.ipv4.icmp_ignore_bogus_error_responses to 1 in /etc/sysctl.conf
+•	Check for open ports: netstat -antp
